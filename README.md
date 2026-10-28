@@ -44,12 +44,27 @@ ctest --test-dir build --output-on-failure
 `<core prefix>` is the installation prefix of the Pothos core. Do not set
 it when the core is installed in a default location of the system.
 
+Install the modules:
+
+```sh
+cmake --install build
+```
+
+The core loads modules only from its own prefix (and from
+`POTHOS_PLUGIN_PATH`). Thus the default install prefix of this project is
+the prefix of the core. When you give `CMAKE_INSTALL_PREFIX`, set
+`POTHOS_PLUGIN_PATH` to `<prefix>/lib/Pothos/modules<ABI version>`.
+
 ## Tests
 
 Each module lists its self-tests (`TESTS` of `pothos_blocks_module()`).
 The test `blocks.stage` installs the modules into `build/stage`. Then
 `blocks.selftests` runs each self-test with the PothosUtil of the core and
 `POTHOS_PLUGIN_PATH` set to the staged modules.
+
+The tests stop with an error when the blocks are also installed in the
+prefix of the core: the core would load the two copies. Remove the
+installed copy, or test against another installation of the core.
 
 ## Licensing information
 

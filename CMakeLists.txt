@@ -14,6 +14,13 @@ option(BLOCKS_WARNINGS_AS_ERRORS "Treat compiler warnings as errors (GCC and Cla
 find_package(Pothos CONFIG REQUIRED)
 include(PothosConfigSIMD) #pothos_multiarch, PothosGenerateSIMDSources
 
+#the core loads modules from its own prefix (POTHOS_ROOT): install there
+#when the user does not give CMAKE_INSTALL_PREFIX
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "${POTHOS_ROOT}" CACHE PATH "Install prefix (default: the prefix of the Pothos core)" FORCE)
+    message(STATUS "Install prefix: ${CMAKE_INSTALL_PREFIX} (the prefix of the Pothos core)")
+endif()
+
 ########################################################################
 # Third party libraries
 ########################################################################

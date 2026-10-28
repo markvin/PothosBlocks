@@ -19,6 +19,16 @@ endforeach()
 include(${CMAKE_CURRENT_LIST_DIR}/PothosTestEnv.cmake)
 pothos_test_env("${PREFIX}" "${TEST_HOME_DIR}" "${BINDIR}" "${LIBDIR}")
 if (PLUGIN_PATH)
+    #POTHOS_PLUGIN_PATH adds to the module directories of PREFIX: the same
+    #modules installed in PREFIX would load too, and a test could run them
+    file(GLOB plugin_subdirs RELATIVE "${PLUGIN_PATH}" "${PLUGIN_PATH}/*")
+    foreach(subdir IN LISTS plugin_subdirs)
+        file(GLOB installed "${PREFIX}/*/Pothos/modules*/${subdir}")
+        if (installed)
+            message(FATAL_ERROR "PothosRunSelfTests: the modules under test are also installed "
+                "in ${installed}. Remove them, or run the tests against another core prefix.")
+        endif ()
+    endforeach()
     set(ENV{POTHOS_PLUGIN_PATH} "${PLUGIN_PATH}")
 endif ()
 
