@@ -7,7 +7,7 @@ on:
 env:
   # the branch of the Pothos core that the blocks build against
   POTHOS_CORE_REPO: markvin/PothosCore
-  POTHOS_CORE_REF: phase9-conan-deps
+  POTHOS_CORE_REF: pothos2
 
 jobs:
   build:
