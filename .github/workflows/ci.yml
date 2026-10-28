@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  # the branch of the Pothos core that the blocks build against
+  POTHOS_CORE_REPO: markvin/PothosCore
+  POTHOS_CORE_REF: phase9-conan-deps
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-gcc
+            os: ubuntu-24.04
+            cc: gcc-14
+            cxx: g++-14
+            config: Debug
+            extra: "-DBLOCKS_WARNINGS_AS_ERRORS=ON"
+          - name: linux-clang
+            os: ubuntu-24.04
+            cc: clang-18
+            cxx: clang++-18
+            config: Release
+            extra: "-DBLOCKS_WARNINGS_AS_ERRORS=ON"
+          - name: macos
+            # temporary Intel (x86_64) runner, the same as the core
+            os: macos-15-intel
+            cc: clang
+            cxx: clang++
+            config: Debug
+            extra: "-DCMAKE_OSX_DEPLOYMENT_TARGET=13.3"
+            core_extra: "-DCMAKE_OSX_DEPLOYMENT_TARGET=13.3"
+          - name: windows
+            os: windows-latest
+            cc: cl
+            cxx: cl
+            config: Release
+            extra: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.POTHOS_CORE_REPO }}
+          ref: ${{ env.POTHOS_CORE_REF }}
+          path: pothos-core
+
+      - name: Install Ninja (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # the dependencies of the core and of the blocks come from Conan 2;
+      # CMake only gets the toolchain file. CC/CXX select the compiler.
+      - name: Dependencies (Conan)
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          pipx install "conan>=2,<3"
+          conan profile detect --force
+          for dir in pothos-core .; do
+            conan install $dir --output-folder=$dir/build/conan \
+              -s build_type=${{ matrix.config }} -s compiler.cppstd=23 --build=missing \
+              -c tools.cmake.cmaketoolchain:generator=Ninja
+          done
+
+      - name: Build and install the core
+        shell: bash
+        run: |
+          #a path that CMake understands on Windows too (pwd -W: D:/a/...)
+          prefix="$(pwd -W 2>/dev/null || pwd)/pothos-install"
+          echo "POTHOS_PREFIX=$prefix" >> "$GITHUB_ENV"
+          cmake -S pothos-core -B pothos-core/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.config }} \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCMAKE_TOOLCHAIN_FILE=build/conan/conan_toolchain.cmake \
+            -DCMAKE_INSTALL_PREFIX="$prefix" \
+            -DPOTHOS_BUILD_TESTS=OFF -DPOTHOS_BUILD_DOCS=OFF \
+            ${{ matrix.core_extra }}
+          cmake --build pothos-core/build
+          cmake --install pothos-core/build
+
+      - name: Configure
+        shell: bash
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.config }}
+          -DCMAKE_C_COMPILER=${{ matrix.cc }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DCMAKE_TOOLCHAIN_FILE=build/conan/conan_toolchain.cmake
+          -DCMAKE_PREFIX_PATH="$POTHOS_PREFIX"
+          ${{ matrix.extra }}
+
+      # keep going after the first error to report all of them in one run
+      - name: Build
+        run: cmake --build build -- -k 0
+
+      - name: Test
+        #-V: the output of every self-test (passed ones too, e.g. skipped tests)
+        run: ctest --test-dir build --output-on-failure -V

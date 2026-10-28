@@ -11,7 +11,7 @@ pothos_blocks_module(
         TestNetworkTopology.cpp
         DatagramIO.cpp
     LIBRARIES
-        pothos_asio
+        blocks_asio
     TESTS
         test_network_blocks
         test_network_blocks_ipv6

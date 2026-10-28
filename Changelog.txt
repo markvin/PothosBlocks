@@ -4,6 +4,9 @@ Release 0.6.0 (pending)
 ==========================
 
 - XSIMD implementation of various blocks
+- Port to the pothos2 core: no Poco, network blocks on Asio
+- Dependencies (nlohmann_json, Asio, xsimd) through find_package,
+  from the system packages or from Conan 2 (conanfile.txt)
 - Memory mapped buffer for binary file source
 
 New blocks:
