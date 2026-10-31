@@ -64,11 +64,10 @@ static void testBinaryFileBlocksCommon(
 //removed by the destructor
 struct TempFile
 {
-    TempFile(void)
+    explicit TempFile(const std::filesystem::path &dir = std::filesystem::temp_directory_path())
     {
         static std::atomic<unsigned long long> counter(0);
         std::random_device rd;
-        const auto dir = std::filesystem::temp_directory_path();
         do _path = dir / ("pothos-blocks-" + std::to_string(rd()) + "-" + std::to_string(counter++) + ".tmp");
         while (std::filesystem::exists(_path));
         std::ofstream(_path, std::ios::binary);
@@ -84,25 +83,43 @@ struct TempFile
     {
         return _path;
     }
+    //! The path as UTF-8 text (the paths of the blocks are UTF-8)
+    std::string text(void) const
+    {
+        const auto u8 = _path.u8string();
+        return std::string(u8.begin(), u8.end());
+    }
 private:
     std::filesystem::path _path;
 };
 
-static void testBinaryFileBlocks(bool optimizeSourceForStandardFile)
+static void testBinaryFileBlocks(bool optimizeSourceForStandardFile, const std::filesystem::path &dir = std::filesystem::temp_directory_path())
 {
-    TempFile tempFile;
+    TempFile tempFile(dir);
 
     auto fileSource = Pothos::BlockRegistry::make(
                           "/blocks/binary_file_source",
                           "int",
                           optimizeSourceForStandardFile);
     fileSource.call("setAutoRewind", false);
-    fileSource.call("setFilePath", tempFile.path().string());
+    fileSource.call("setFilePath", tempFile.text());
 
     auto fileSink = Pothos::BlockRegistry::make("/blocks/binary_file_sink");
-    fileSink.call("setFilePath", tempFile.path().string());
+    fileSink.call("setFilePath", tempFile.text());
 
     testBinaryFileBlocksCommon(fileSource, fileSink);
+}
+
+//a directory with a name that is not ASCII (on Windows: the wide file API)
+POTHOS_TEST_BLOCK("/blocks/tests", test_binary_file_blocks_non_ascii_dir)
+{
+    const std::string name = "pothos-blocks-\xD1\x82\xD0\xB5\xD1\x81\xD1\x82-\xC3\xA9-" + std::to_string(std::random_device{}());
+    const auto dir = std::filesystem::temp_directory_path() / utf8Path(name);
+    std::filesystem::create_directories(dir);
+    testBinaryFileBlocks(true, dir);
+    testBinaryFileBlocks(false, dir);
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
 }
 
 POTHOS_TEST_BLOCK("/blocks/tests", test_binary_file_blocks)

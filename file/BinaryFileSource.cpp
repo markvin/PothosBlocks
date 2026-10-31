@@ -131,7 +131,7 @@ public:
 
     void setFilePath(const std::string& path)
     {
-        if (!std::filesystem::exists(path))
+        if (!std::filesystem::exists(utf8Path(path)))
         {
            throw Pothos::FileNotFoundException(path);
         }
@@ -149,7 +149,7 @@ public:
     void activate() override
     {
         if(_path.empty()) throw Pothos::FileException("BinaryFileSource", "empty file path");
-        _fd = openFileForRead(_path.c_str());
+        _fd = openFileForRead(_path);
         if (_fd < 0) throw Pothos::Util::ErrnoException<Pothos::OpenFileException>();
     }
 

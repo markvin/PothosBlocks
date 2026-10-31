@@ -5,6 +5,7 @@
 #include <Pothos/Framework.hpp>
 #include <Pothos/Proxy.hpp>
 #include <Pothos/Util/Network.hpp>
+#include "SocketEndpoint.hpp"
 #include <asio/connect.hpp>
 #include <asio/io_context.hpp>
 #include <asio/ip/tcp.hpp>
@@ -104,6 +105,45 @@ POTHOS_TEST_BLOCK("/blocks/tests", test_network_blocks)
 {
     network_test_harness("tcp", true);
     network_test_harness("tcp", false);
+}
+
+//CONNECT tries each address of a host name: the server listens on ::1 only,
+//the client uses localhost (IPv4 first, refused, then IPv6)
+POTHOS_TEST_BLOCK("/blocks/tests", test_network_connect_all_addresses)
+{
+    if (not Pothos::Util::isIPv6Supported())
+    {
+        std::cout << "IPv6 is not supported on this host, skipped" << std::endl;
+        return;
+    }
+    bool v4 = false, v6 = false;
+    {
+        asio::io_context context;
+        asio::ip::tcp::resolver resolver(context);
+        asio::error_code ec;
+        for (const auto &entry : resolver.resolve("localhost", "", ec))
+        {
+            if (entry.endpoint().address() == asio::ip::make_address("127.0.0.1")) v4 = true;
+            if (entry.endpoint().address() == asio::ip::make_address("::1")) v6 = true;
+        }
+    }
+    if (not v4 or not v6)
+    {
+        std::cout << "localhost does not resolve to 127.0.0.1 and ::1, skipped" << std::endl;
+        return;
+    }
+    const auto localhost = [](const std::string &port){return "localhost:"+port;};
+    network_test_harness("tcp", true, "[::1]", localhost);
+    network_test_harness("tcp", false, "[::1]", localhost);
+}
+
+//the constructor errors: the guard frees the impl (a leak shows only under LeakSanitizer)
+POTHOS_TEST_BLOCK("/blocks/tests", test_network_endpoint_errors)
+{
+    POTHOS_TEST_THROWS(PothosPacketSocketEndpoint("udp://127.0.0.1:1", "CONNECT"), Pothos::InvalidArgumentException);
+    POTHOS_TEST_THROWS(PothosPacketSocketEndpoint("tcp://127.0.0.1:1", "OTHER"), Pothos::InvalidArgumentException);
+    POTHOS_TEST_THROWS(PothosPacketSocketEndpoint("tcp://no.such.host.invalid:1", "CONNECT"), Pothos::RuntimeException);
+    PothosPacketSocketEndpoint disconnected("", "DISCONNECT");
 }
 
 POTHOS_TEST_BLOCK("/blocks/tests", test_network_blocks_ipv6)
