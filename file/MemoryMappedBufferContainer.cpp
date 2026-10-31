@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSL-1.0
 
 #include "MemoryMappedBufferContainer.hpp"
+#include "FileUtils.hpp" //utf8Path
 
 #include <Pothos/Exception.hpp>
 #include <Pothos/Util/ExceptionForErrorCode.hpp>
@@ -53,7 +54,7 @@ public:
 
         constexpr int mmapFlags = MAP_SHARED;
 
-        _length = std::filesystem::file_size(filepath);
+        _length = std::filesystem::file_size(utf8Path(filepath));
 
         int fd = 0;
         throwErrnoOnFailure<Pothos::OpenFileException>(
@@ -124,7 +125,7 @@ public:
         bool readable,
         bool writable) : _buffer(nullptr), _length(0), _fileHandle(nullptr)
     {
-        _length = std::filesystem::file_size(filepath);
+        _length = std::filesystem::file_size(utf8Path(filepath));
 
         //
         // Variables used by multiple functions
@@ -145,8 +146,10 @@ public:
         constexpr DWORD flagsAndAttributes = FILE_ATTRIBUTE_NORMAL;
         constexpr ::HANDLE templateFile = nullptr;
 
-        _fileHandle = ::CreateFileA(
-                          filepath.c_str(),
+        //the path is UTF-8: the wide API (CreateFileA would use the ANSI code page)
+        const auto widePath = utf8Path(filepath).wstring();
+        _fileHandle = ::CreateFileW(
+                          widePath.c_str(),
                           createFileDesiredAccess,
                           shareMode,
                           pSecurityAttributes,
@@ -174,9 +177,9 @@ public:
         DWORD maxSizeHigh = static_cast<DWORD>(_length >> 32);
         DWORD maxSizeLow = static_cast<DWORD>(_length & 0xFFFFFFFF);
 
-        constexpr LPCSTR name = nullptr;
+        constexpr LPCWSTR name = nullptr;
 
-        _mappingHandle = ::CreateFileMappingA(
+        _mappingHandle = ::CreateFileMappingW(
                              _fileHandle,
                              pSecurityAttributes,
                              fileProtection,
@@ -276,11 +279,12 @@ MemoryMappedBufferContainer::MemoryMappedBufferContainer(
     bool readable,
     bool writable): _implUPtr(nullptr)
 {
-    if (!std::filesystem::exists(filepath)) throw Pothos::FileNotFoundException(filepath);
-    if (std::filesystem::file_size(filepath) == 0) throw Pothos::InvalidArgumentException("Empty files not supported", filepath);
+    const auto path = utf8Path(filepath);
+    if (!std::filesystem::exists(path)) throw Pothos::FileNotFoundException(filepath);
+    if (std::filesystem::file_size(path) == 0) throw Pothos::InvalidArgumentException("Empty files not supported", filepath);
     //open (without truncation) to check the access the mapping needs
-    if (readable && !std::ifstream(filepath, std::ios::binary)) throw Pothos::FileAccessDeniedException(filepath);
-    if (writable && !std::fstream(filepath, std::ios::binary | std::ios::in | std::ios::out)) throw Pothos::FileReadOnlyException(filepath);
+    if (readable && !std::ifstream(path, std::ios::binary)) throw Pothos::FileAccessDeniedException(filepath);
+    if (writable && !std::fstream(path, std::ios::binary | std::ios::in | std::ios::out)) throw Pothos::FileReadOnlyException(filepath);
 
     _implUPtr.reset(new Impl(filepath, readable, writable));
 }

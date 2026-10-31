@@ -14,7 +14,9 @@
 #include <mutex>
 #include <cassert>
 #include <iostream>
-#include <algorithm> //min/max
+#include <algorithm> //min/max, find, stable_partition
+#include <memory>
+#include <vector>
 
 /***********************************************************************
  * The maximum number of bytes passed to a single send() call.
@@ -65,12 +67,55 @@ struct PothosPacketSocketEndpointTcp
         }
         else
         {
-            asio::error_code ec = asio::error::timed_out;
-            socket.async_connect(endpoint, [&](const asio::error_code &e){ec = e;});
-            runFor(context, socket, ConnectTimeout);
+            //try each address of the host (IPv4 first, as the core) until one accepts
+            const auto deadline = std::chrono::steady_clock::now() + ConnectTimeout;
+            asio::error_code ec = asio::error::host_not_found;
+            for (const auto &addr : hostAddresses(host))
+            {
+                const auto left = deadline - std::chrono::steady_clock::now();
+                if (left <= std::chrono::steady_clock::duration::zero()) {ec = asio::error::timed_out; break;}
+                asio::error_code closeEc;
+                socket.close(closeEc);
+                ec = asio::error::timed_out;
+                socket.async_connect(asio::ip::tcp::endpoint(addr, port), [&](const asio::error_code &e){ec = e;});
+                runFor(context, socket, left);
+                if (not ec) break;
+            }
             if (ec) throw asio::system_error(ec, "connect");
             this->setupConnected();
         }
+    }
+
+    //! All addresses of a host (an IP literal, or a name to resolve), IPv4 first
+    std::vector<asio::ip::address> hostAddresses(const std::string &host)
+    {
+        asio::error_code ec;
+        const auto literal = asio::ip::make_address(host, ec);
+        if (not ec) return {literal};
+
+        std::vector<asio::ip::address> addrs;
+        asio::ip::tcp::resolver resolver(context);
+        ec = asio::error::timed_out;
+        resolver.async_resolve(host, "", [&](const asio::error_code &e, const asio::ip::tcp::resolver::results_type &results)
+        {
+            ec = e;
+            for (const auto &entry : results)
+            {
+                const auto addr = entry.endpoint().address();
+                if (std::find(addrs.begin(), addrs.end(), addr) == addrs.end()) addrs.push_back(addr);
+            }
+        });
+        context.restart();
+        context.run_for(ConnectTimeout);
+        if (not context.stopped())
+        {
+            resolver.cancel();
+            context.run();
+        }
+        if (not ec and addrs.empty()) ec = asio::error::host_not_found;
+        if (ec) throw asio::system_error(ec, "resolve " + host);
+        std::stable_partition(addrs.begin(), addrs.end(), [](const asio::ip::address &addr){return addr.is_v4();});
+        return addrs;
     }
 
     static asio::ip::address hostAddress(const std::string &host)
@@ -268,7 +313,13 @@ struct PothosPacketSocketEndpoint::Impl
 PothosPacketSocketEndpoint::PothosPacketSocketEndpoint(const std::string &uri, const std::string &opt):
     _impl(new Impl())
 {
-    if (opt == "DISCONNECT") return;
+    //the destructor does not run when the constructor throws: the guard frees the impl
+    std::unique_ptr<Impl> guard(_impl);
+    if (opt == "DISCONNECT")
+    {
+        guard.release();
+        return;
+    }
     if (opt == "BIND") _impl->state = EP_STATE_LISTEN;
     if (opt == "CONNECT") _impl->state = EP_STATE_CLOSED;
     const auto uriObj = Pothos::Util::parseUri(uri);
@@ -283,9 +334,9 @@ PothosPacketSocketEndpoint::PothosPacketSocketEndpoint(const std::string &uri, c
     }
     catch (const std::system_error &ex)
     {
-        delete _impl;
         throw Pothos::RuntimeException("PothosPacketSocketEndpoint("+uri+" -> "+opt+")", ex.what());
     }
+    guard.release();
 }
 
 PothosPacketSocketEndpoint::~PothosPacketSocketEndpoint(void)
