@@ -8,6 +8,12 @@ Release 0.6.0 (pending)
 - Dependencies (nlohmann_json, Asio, xsimd) through find_package,
   from the system packages or from Conan 2 (conanfile.txt)
 - Memory mapped buffer for binary file source
+- Network CONNECT tries each address of a host name (localhost to a
+  server on ::1 only connects); a failed endpoint construction frees its
+  memory
+- Windows: the file blocks open a UTF-8 path with the wide API (a path
+  that is not ASCII works)
+- The self-tests unset the POTHOS_* variables of a developer shell
 
 New blocks:
 

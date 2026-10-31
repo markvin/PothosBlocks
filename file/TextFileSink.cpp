@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSL-1.0
 
 #include <Pothos/Framework.hpp>
+#include "FileUtils.hpp" //utf8Path
 #include <Pothos/System/Logger.hpp>
 #include <cstring>
 #include <complex>
@@ -77,7 +78,7 @@ public:
     void activate(void)
     {
         if (_path.empty()) throw Pothos::FileException("TextFileSink", "empty file path");
-        _file.open(_path.c_str());
+        _file.open(utf8Path(_path));
         if (not _file)
         {
             Pothos::System::log(Pothos::System::LogLevel::Error, "TextFileSink", "open({}) failed -- {}({})", _path, std::string(strerror(errno)), errno);

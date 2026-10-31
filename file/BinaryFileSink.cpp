@@ -99,7 +99,7 @@ public:
     void activate(void) override
     {
         if (_path.empty()) throw Pothos::FileException("BinaryFileSink", "empty file path");
-        _fd = openFileForWrite(_path.c_str());
+        _fd = openFileForWrite(_path);
 
         if (_fd < 0) throw Pothos::Util::ErrnoException<Pothos::OpenFileException>();
     }
